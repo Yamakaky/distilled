@@ -1,6 +1,7 @@
 use std::str;
 use types::*;
 
+// TODO: bound check on both side
 const IN_BUFFER_SIZE: usize = 1024;
 static mut IN_BUFFER: &[u8] = &[0; IN_BUFFER_SIZE];
 const OUT_BUFFER_SIZE: usize = 1024;
@@ -31,7 +32,7 @@ pub fn add(in_buffer_len: u32) -> u32 {
     }
     .serialize_json();
     unsafe {
-        std::ptr::copy_nonoverlapping(ret.as_ptr(), OUT_BUFFER.as_mut_ptr(), ret.len());
+        OUT_BUFFER[..ret.len()].copy_from_slice(ret.as_bytes());
     }
     ret.len() as u32
 }
