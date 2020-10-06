@@ -41,12 +41,16 @@ pub fn distilled(attr: TokenStream, item: TokenStream) -> TokenStream {
     let wrapper_name = syn::Ident::new(&format!("_distilled_wrapper_{}", fn_name), fn_name.span());
     let wrapper_name_str = wrapper_name.to_string();
     let get_in_name = syn::Ident::new(&format!("_distilled_get_in_{}", fn_name), fn_name.span());
+    let get_in_name_str = get_in_name.to_string();
     let get_out_name = syn::Ident::new(&format!("_distilled_get_out_{}", fn_name), fn_name.span());
+    let get_out_name_str = get_out_name.to_string();
 
     TokenStream::from(quote! {
         #[cfg(not(target_arch = "wasm32"))]
         pub struct Job<T> {
             pub fn_name: String,
+            pub in_name: String,
+            pub out_name: String,
             pub bin_arg: Vec<u8>,
             pub ret_parser: fn(Vec<u8>) -> T,
         }
@@ -60,6 +64,8 @@ pub fn distilled(attr: TokenStream, item: TokenStream) -> TokenStream {
 
             Job {
                 fn_name: #wrapper_name_str.to_string(),
+                in_name: #get_in_name_str.to_string(),
+                out_name: #get_out_name_str.to_string(),
                 bin_arg,
                 ret_parser: |ret: Vec<u8>| {
                     let mut state = DeJsonState::default();

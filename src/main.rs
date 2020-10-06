@@ -7,7 +7,13 @@ fn main() -> Result<()> {
     let wasm_bytes = include_bytes!("../target/wasm32-unknown-unknown/debug/wasm.wasm");
     let job = types::proc_add(1, 2);
 
-    let ret = runner.run(wasm_bytes.to_vec(), job.fn_name, job.bin_arg)?;
+    let ret = runner.run(
+        wasm_bytes.to_vec(),
+        job.fn_name,
+        job.in_name,
+        job.out_name,
+        job.bin_arg,
+    )?;
 
     let result = (job.ret_parser)(ret);
     println!("Result: {:?}", result);
@@ -20,6 +26,8 @@ enum Req {
         id: u64,
         wasm: Vec<u8>,
         func: String,
+        in_name: String,
+        out_name: String,
         params: Vec<u8>,
     },
     Stop,
@@ -51,11 +59,14 @@ impl Runner {
                         id,
                         wasm,
                         func,
+                        in_name,
+                        out_name,
                         params,
                     }) => {
                         let _ = worker_res.send(Res::Result {
                             id,
-                            res: Runner::job(&store, &wasm, &func, &params).unwrap(),
+                            res: Runner::job(&store, &wasm, &func, &in_name, &out_name, &params)
+                                .unwrap(),
                         });
                     }
                     Ok(Req::Stop) | Err(crossbeam_channel::RecvError) => break,
@@ -69,12 +80,21 @@ impl Runner {
         }
     }
 
-    pub fn run(&self, wasm: Vec<u8>, func: String, params: Vec<u8>) -> Result<Vec<u8>> {
+    pub fn run(
+        &self,
+        wasm: Vec<u8>,
+        func: String,
+        in_name: String,
+        out_name: String,
+        params: Vec<u8>,
+    ) -> Result<Vec<u8>> {
         let rid = 1;
         self.req_queue.send(Req::Run {
             id: rid,
             wasm,
             func,
+            in_name,
+            out_name,
             params,
         })?;
         let Res::Result { id, res } = self.res_queue.recv()?;
@@ -86,6 +106,8 @@ impl Runner {
         store: &Store,
         wasm_bytes: &[u8],
         func_name: &str,
+        in_name: &str,
+        out_name: &str,
         param_bytes: &[u8],
     ) -> Result<Vec<u8>> {
         let module = Module::new(store, wasm_bytes).context("module compilation")?;
@@ -95,7 +117,7 @@ impl Runner {
 
         let get_in_buffer = instance
             .exports
-            .get_native_function::<(), WasmPtr<u8, Array>>("get_in_buffer")
+            .get_native_function::<(), WasmPtr<u8, Array>>(in_name)
             .expect("get_wasm_memory_buffer_pointer");
         let func = instance
             .exports
@@ -103,7 +125,7 @@ impl Runner {
             .expect("add function in Wasm module");
         let get_out_buffer = instance
             .exports
-            .get_native_function::<(), WasmPtr<u8, Array>>("get_out_buffer")
+            .get_native_function::<(), WasmPtr<u8, Array>>(out_name)
             .expect("get_wasm_memory_buffer_pointer");
 
         let in_buffer_ptr = get_in_buffer.call().unwrap();
