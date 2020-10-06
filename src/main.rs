@@ -1,24 +1,15 @@
 use anyhow::{Context, Result};
-use types::*;
 use wasmer::{imports, Array, Cranelift, Instance, Module, Store, WasmPtr, JIT};
 
 fn main() -> Result<()> {
     let runner = Runner::new();
 
     let wasm_bytes = include_bytes!("../target/wasm32-unknown-unknown/debug/wasm.wasm");
-    let param: String = Param { a: 1, b: 2 }.serialize_json();
+    let job = types::proc_add(1, 2);
 
-    let ret = runner.run(wasm_bytes.to_vec(), "add".into(), param.into_bytes())?;
+    let ret = runner.run(wasm_bytes.to_vec(), job.fn_name, job.bin_arg)?;
 
-    let result = {
-        let mut state = types::nanoserde::DeJsonState::default();
-        let mut chars = std::str::from_utf8(&ret)?.chars();
-        state.next(&mut chars);
-        state.next_tok(&mut chars).context("return value deser")?;
-        Ret::de_json(&mut state, &mut chars)
-            .context("return value deser")?
-            .ret
-    };
+    let result = (job.ret_parser)(ret);
     println!("Result: {:?}", result);
 
     Ok(())

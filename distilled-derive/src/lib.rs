@@ -28,17 +28,47 @@ pub fn distilled(attr: TokenStream, item: TokenStream) -> TokenStream {
             .collect(),
     };
     let ret = item.sig.output;
+    let ret_type = match &ret {
+        syn::ReturnType::Default => syn::Type::Tuple(syn::TypeTuple {
+            paren_token: syn::token::Paren::default(),
+            elems: syn::punctuated::Punctuated::new(),
+        }),
+        syn::ReturnType::Type(_, t) => *t.clone(),
+    };
     let body = item.block;
     let fn_name = item.sig.ident;
     let mod_name = syn::Ident::new(&format!("_distilled_mod_{}", fn_name), fn_name.span());
     let wrapper_name = syn::Ident::new(&format!("_distilled_wrapper_{}", fn_name), fn_name.span());
+    let wrapper_name_str = wrapper_name.to_string();
     let get_in_name = syn::Ident::new(&format!("_distilled_get_in_{}", fn_name), fn_name.span());
     let get_out_name = syn::Ident::new(&format!("_distilled_get_out_{}", fn_name), fn_name.span());
 
     TokenStream::from(quote! {
         #[cfg(not(target_arch = "wasm32"))]
-        pub fn wrapper () {
+        pub struct Job<T> {
+            pub fn_name: String,
+            pub bin_arg: Vec<u8>,
+            pub ret_parser: fn(Vec<u8>) -> T,
+        }
 
+        #[cfg(not(target_arch = "wasm32"))]
+        pub fn #fn_name(#args) -> Job<#ret_type> {
+            use ::nanoserde::{DeJson, DeJsonState, SerJson};
+
+            let args = (#pats);
+            let bin_arg = args.serialize_json().into_bytes();
+
+            Job {
+                fn_name: #wrapper_name_str.to_string(),
+                bin_arg,
+                ret_parser: |ret: Vec<u8>| {
+                    let mut state = DeJsonState::default();
+                    let mut chars = ::std::str::from_utf8(&ret).unwrap().chars();
+                    state.next(&mut chars);
+                    state.next_tok(&mut chars).unwrap();
+                    #ret_type::de_json(&mut state, &mut chars).unwrap()
+                },
+            }
         }
 
         #[cfg(target_arch = "wasm32")]
