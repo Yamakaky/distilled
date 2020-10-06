@@ -1,3 +1,3 @@
-pub use types::*;
+pub use wasm::*;
 
 fn main() {}

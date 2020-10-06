@@ -5,7 +5,7 @@ fn main() -> Result<()> {
     let runner = Runner::new();
 
     let wasm_bytes = include_bytes!("../target/wasm32-unknown-unknown/debug/wasm.wasm");
-    let job = types::proc_add(1, 2);
+    let job = wasm::proc_add(vec![1, 2, 3, 5]);
 
     let ret = runner.run(
         wasm_bytes.to_vec(),

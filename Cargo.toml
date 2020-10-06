@@ -8,10 +8,10 @@ edition = "2018"
 
 [dependencies]
 wasmer = { version = "1.0.0-alpha3", default-features = false, optional = false, features = ["jit", "cranelift"] }
-types = {path = "types"}
+wasm = { path = "wasm" }
 nanoserde = "0.1.19"
 anyhow = "1.0.32"
 crossbeam-channel = "0.4.4"
 
 [workspace]
-members = ["distilled-derive", "types", "wasm"]
+members = ["distilled-derive", "wasm"]
