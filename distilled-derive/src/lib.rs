@@ -47,22 +47,13 @@ pub fn distilled(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     TokenStream::from(quote! {
         #[cfg(not(target_arch = "wasm32"))]
-        pub struct Job<T> {
-            pub fn_name: String,
-            pub in_name: String,
-            pub out_name: String,
-            pub bin_arg: Vec<u8>,
-            pub ret_parser: fn(Vec<u8>) -> T,
-        }
-
-        #[cfg(not(target_arch = "wasm32"))]
-        pub fn #fn_name(#args) -> Job<#ret_type> {
+        pub fn #fn_name(#args) -> ::distilled::Job<#ret_type> {
             use ::nanoserde::{DeJson, DeJsonState, SerJson};
 
             let args = (#pats);
             let bin_arg = args.serialize_json().into_bytes();
 
-            Job {
+            ::distilled::Job {
                 fn_name: #wrapper_name_str.to_string(),
                 in_name: #get_in_name_str.to_string(),
                 out_name: #get_out_name_str.to_string(),

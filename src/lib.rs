@@ -1,24 +1,12 @@
 use anyhow::{Context, Result};
 use wasmer::{imports, Array, Cranelift, Instance, Module, Store, WasmPtr, JIT};
 
-fn main() -> Result<()> {
-    let runner = Runner::new();
-
-    let wasm_bytes = include_bytes!("../target/wasm32-unknown-unknown/debug/wasm.wasm");
-    let job = wasm::proc_add(vec![1, 2, 3, 5]);
-
-    let ret = runner.run(
-        wasm_bytes.to_vec(),
-        job.fn_name,
-        job.in_name,
-        job.out_name,
-        job.bin_arg,
-    )?;
-
-    let result = (job.ret_parser)(ret);
-    println!("Result: {:?}", result);
-
-    Ok(())
+pub struct Job<T> {
+    pub fn_name: String,
+    pub in_name: String,
+    pub out_name: String,
+    pub bin_arg: Vec<u8>,
+    pub ret_parser: fn(Vec<u8>) -> T,
 }
 
 enum Req {
@@ -38,14 +26,14 @@ enum Res {
 }
 
 #[derive(Debug, Clone)]
-struct Runner {
+pub struct Runner {
     store: wasmer::Store,
     req_queue: crossbeam_channel::Sender<Req>,
     res_queue: crossbeam_channel::Receiver<Res>,
 }
 
 impl Runner {
-    fn new() -> Self {
+    pub fn new() -> Self {
         let store = Store::new(&JIT::new(&Cranelift::default()).engine());
         let (req_queue, worker_req) = crossbeam_channel::unbounded();
         let (worker_res, res_queue) = crossbeam_channel::unbounded();
