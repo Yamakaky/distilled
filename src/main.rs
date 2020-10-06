@@ -15,7 +15,7 @@ fn main() -> Result<()> {
         let mut chars = std::str::from_utf8(&ret)?.chars();
         state.next(&mut chars);
         state.next_tok(&mut chars).context("return value deser")?;
-        Ret::de_json(&mut state, &mut chars).context("return value deser")?
+        Ret::de_json(&mut state, &mut chars).context("return value deser")?.ret
     };
     println!("Result: {:?}", result);
 
@@ -44,6 +44,15 @@ impl Runner {
             .exports
             .get_native_function::<(), WasmPtr<u8, Array>>("get_in_buffer")
             .expect("get_wasm_memory_buffer_pointer");
+        let func = instance
+            .exports
+            .get_native_function::<u32, u32>(func_name)
+            .expect("add function in Wasm module");
+        let get_out_buffer = instance
+            .exports
+            .get_native_function::<(), WasmPtr<u8, Array>>("get_out_buffer")
+            .expect("get_wasm_memory_buffer_pointer");
+
         let in_buffer_ptr = get_in_buffer.call().unwrap();
         let param_len = param_bytes.len() as u32;
         let memory_writer = unsafe { in_buffer_ptr.deref_mut(wasm_memory, 0, param_len).unwrap() };
@@ -51,22 +60,13 @@ impl Runner {
             to.set(*from);
         }
 
-        let func = instance
-            .exports
-            .get_native_function::<u32, u32>(func_name)
-            .expect("add function in Wasm module");
-        let ret_len = func.call(param_len)?;
+        let ret_len = func.call(param_len)? as usize;
 
-        let get_out_buffer = instance
-            .exports
-            .get_native_function::<(), WasmPtr<u8, Array>>("get_out_buffer")
-            .expect("get_wasm_memory_buffer_pointer");
         let out_buffer_ptr = get_out_buffer.call().unwrap();
-        let ret = out_buffer_ptr
-            .get_utf8_string(&wasm_memory, ret_len)
-            .context("bad str value")?
-            .as_bytes()
-            .into();
-        Ok(ret)
+        let offset = out_buffer_ptr.offset() as usize;
+        Ok(wasm_memory.view()[offset..offset + ret_len]
+            .iter()
+            .map(std::cell::Cell::get)
+            .collect())
     }
 }
