@@ -54,10 +54,12 @@ pub fn distilled(attr: TokenStream, item: TokenStream) -> TokenStream {
             let bin_arg = args.serialize_json().into_bytes();
 
             ::distilled::Job {
-                fn_name: #wrapper_name_str.to_string(),
-                in_name: #get_in_name_str.to_string(),
-                out_name: #get_out_name_str.to_string(),
-                bin_arg,
+                args: ::distilled::LaunchArgs {
+                    fn_name: #wrapper_name_str.to_string(),
+                    in_name: #get_in_name_str.to_string(),
+                    out_name: #get_out_name_str.to_string(),
+                    bin_arg,
+                },
                 ret_parser: |ret: Vec<u8>| {
                     let mut state = DeJsonState::default();
                     let mut chars = ::std::str::from_utf8(&ret).unwrap().chars();

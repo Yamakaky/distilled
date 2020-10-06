@@ -2,21 +2,22 @@ use anyhow::{Context, Result};
 use wasmer::{imports, Array, Cranelift, Instance, Module, Store, WasmPtr, JIT};
 
 pub struct Job<T> {
+    pub args: LaunchArgs,
+    pub ret_parser: fn(Vec<u8>) -> T,
+}
+
+pub struct LaunchArgs {
     pub fn_name: String,
     pub in_name: String,
     pub out_name: String,
     pub bin_arg: Vec<u8>,
-    pub ret_parser: fn(Vec<u8>) -> T,
 }
 
 enum Req {
     Run {
         id: u64,
         wasm: Vec<u8>,
-        func: String,
-        in_name: String,
-        out_name: String,
-        params: Vec<u8>,
+        args: LaunchArgs,
     },
     Stop,
 }
@@ -43,18 +44,10 @@ impl Runner {
             let store = store.clone();
             std::thread::spawn(move || loop {
                 match worker_req.recv() {
-                    Ok(Req::Run {
-                        id,
-                        wasm,
-                        func,
-                        in_name,
-                        out_name,
-                        params,
-                    }) => {
+                    Ok(Req::Run { id, wasm, args }) => {
                         let _ = worker_res.send(Res::Result {
                             id,
-                            res: Runner::job(&store, &wasm, &func, &in_name, &out_name, &params)
-                                .unwrap(),
+                            res: Runner::job(&store, &wasm, args).unwrap(),
                         });
                     }
                     Ok(Req::Stop) | Err(crossbeam_channel::RecvError) => break,
@@ -68,36 +61,19 @@ impl Runner {
         }
     }
 
-    pub fn run(
-        &self,
-        wasm: Vec<u8>,
-        func: String,
-        in_name: String,
-        out_name: String,
-        params: Vec<u8>,
-    ) -> Result<Vec<u8>> {
+    pub fn run(&self, wasm: Vec<u8>, args: LaunchArgs) -> Result<Vec<u8>> {
         let rid = 1;
         self.req_queue.send(Req::Run {
             id: rid,
             wasm,
-            func,
-            in_name,
-            out_name,
-            params,
+            args,
         })?;
         let Res::Result { id, res } = self.res_queue.recv()?;
         assert_eq!(id, rid);
         Ok(res)
     }
 
-    fn job(
-        store: &Store,
-        wasm_bytes: &[u8],
-        func_name: &str,
-        in_name: &str,
-        out_name: &str,
-        param_bytes: &[u8],
-    ) -> Result<Vec<u8>> {
+    fn job(store: &Store, wasm_bytes: &[u8], args: LaunchArgs) -> Result<Vec<u8>> {
         let module = Module::new(store, wasm_bytes).context("module compilation")?;
         let import_object = imports! {};
         let instance = Instance::new(&module, &import_object).context("module instanciation")?;
@@ -105,21 +81,21 @@ impl Runner {
 
         let get_in_buffer = instance
             .exports
-            .get_native_function::<(), WasmPtr<u8, Array>>(in_name)
+            .get_native_function::<(), WasmPtr<u8, Array>>(&args.in_name)
             .expect("get_wasm_memory_buffer_pointer");
         let func = instance
             .exports
-            .get_native_function::<u32, u32>(func_name)
+            .get_native_function::<u32, u32>(&args.fn_name)
             .expect("add function in Wasm module");
         let get_out_buffer = instance
             .exports
-            .get_native_function::<(), WasmPtr<u8, Array>>(out_name)
+            .get_native_function::<(), WasmPtr<u8, Array>>(&args.out_name)
             .expect("get_wasm_memory_buffer_pointer");
 
         let in_buffer_ptr = get_in_buffer.call().unwrap();
-        let param_len = param_bytes.len() as u32;
+        let param_len = args.bin_arg.len() as u32;
         let memory_writer = unsafe { in_buffer_ptr.deref_mut(wasm_memory, 0, param_len).unwrap() };
-        for (from, to) in param_bytes.iter().zip(memory_writer) {
+        for (from, to) in args.bin_arg.iter().zip(memory_writer) {
             to.set(*from);
         }
 
