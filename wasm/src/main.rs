@@ -1,3 +1,5 @@
+#![cfg_attr(target_arch = "wasm32", no_main)]
+
 #[distilled_derive::distilled]
 pub fn proc_add(items: Vec<u8>) -> u8 {
     items.iter().sum::<u8>()
@@ -23,6 +25,3 @@ fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
-
-#[cfg(target_arch = "wasm32")]
-fn main() {}
