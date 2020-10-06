@@ -27,14 +27,18 @@ pub fn add(in_buffer_len: u32) -> u32 {
         state.next_tok(&mut chars).expect("deser2");
         Param::de_json(&mut state, &mut chars).expect("deser")
     };
-    let ret: String = types::Ret {
-        ret: args.a + args.b,
-    }
-    .serialize_json();
+
+    let ret = _add(args.a, args.b);
+
+    let ret: String = types::Ret { ret }.serialize_json();
     unsafe {
         OUT_BUFFER[..ret.len()].copy_from_slice(ret.as_bytes());
     }
     ret.len() as u32
+}
+
+fn _add(a: u32, b: u32) -> u32 {
+    a + b
 }
 
 fn main() {}
