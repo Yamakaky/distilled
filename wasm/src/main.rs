@@ -1,5 +1,9 @@
 #![cfg_attr(target_arch = "wasm32", no_main)]
 
+#[cfg(target_arch = "wasm32")]
+#[global_allocator]
+static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
+
 #[distilled_derive::distilled]
 pub fn upper(s: String) -> String {
     s.to_ascii_uppercase()
