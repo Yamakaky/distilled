@@ -11,6 +11,7 @@ wasmer = { version = "1.0.0-alpha3", default-features = false, optional = false,
 types = {path = "types"}
 nanoserde = "0.1.19"
 anyhow = "1.0.32"
+crossbeam-channel = "0.4.4"
 
 [workspace]
-members = ["types", "wasm"]
+members = ["distilled-derive", "types", "wasm"]

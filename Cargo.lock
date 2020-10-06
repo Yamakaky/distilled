@@ -237,9 +237,18 @@ name = "distilled"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "crossbeam-channel",
  "nanoserde",
  "types",
  "wasmer",
+]
+
+[[package]]
+name = "distilled-derive"
+version = "0.1.0"
+dependencies = [
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -790,6 +799,7 @@ dependencies = [
 name = "types"
 version = "0.1.0"
 dependencies = [
+ "distilled-derive",
  "nanoserde",
 ]
 
