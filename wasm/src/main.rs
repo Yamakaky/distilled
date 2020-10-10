@@ -5,30 +5,28 @@
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 #[distilled_derive::distilled]
-pub fn upper(s: String) -> String {
-    s.to_ascii_uppercase()
+pub fn double(val: u32) -> u32 {
+    val * val
 }
 
 #[distilled_derive::distilled]
-pub fn proc_add(items: Vec<u8>) -> u8 {
-    items.iter().sum::<u8>()
+pub fn reduce(a: u32, b: u32) -> u32 {
+    a + b
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> anyhow::Result<()> {
-    let runner = distilled::Runner::new();
+    use distilled::iter::{DistIterator, SliceExt};
 
     let wasm_bytes = include_bytes!("../../target/wasm32-unknown-unknown/debug/wasm.wasm");
+    let mut runner = distilled::Runner::new(wasm_bytes);
 
-    let job = proc_add(vec![1, 2, 3, 5]);
-    let ret = runner.run(wasm_bytes.to_vec(), job.args)?;
-    let result = (job.ret_parser)(ret);
-    println!("Sum: {:?}", result);
-
-    let job = upper("pote".to_string());
-    let ret = runner.run(wasm_bytes.to_vec(), job.args)?;
-    let result = (job.ret_parser)(ret);
-    println!("Upper: {:?}", result);
+    let out = vec![1, 2, 3, 5]
+        .dist_iter()
+        .map(double())
+        .reduce(reduce())
+        .run(&mut runner);
+    dbg!(out);
 
     Ok(())
 }

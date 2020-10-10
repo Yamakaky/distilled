@@ -47,32 +47,18 @@ pub fn distilled(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     TokenStream::from(quote! {
         #[cfg(not(target_arch = "wasm32"))]
-        pub fn #fn_name(#args) -> ::distilled::Job<#ret_type> {
-            use ::nanoserde::{DeJson, DeJsonState, SerJson};
-
-            let args = (#pats);
-            let bin_arg = args.serialize_json().into_bytes();
-
-            ::distilled::Job {
-                args: ::distilled::LaunchArgs {
-                    fn_name: #wrapper_name_str.to_string(),
-                    in_name: #get_in_name_str.to_string(),
-                    out_name: #get_out_name_str.to_string(),
-                    bin_arg,
-                },
-                ret_parser: |ret: Vec<u8>| {
-                    let mut state = DeJsonState::default();
-                    let mut chars = ::std::str::from_utf8(&ret).unwrap().chars();
-                    state.next(&mut chars);
-                    state.next_tok(&mut chars).unwrap();
-                    #ret_type::de_json(&mut state, &mut chars).unwrap()
-                },
+        pub fn #fn_name() -> ::distilled::iter::WasmFn<(#tys), #ret_type> {
+            ::distilled::iter::WasmFn {
+                entry: #wrapper_name_str.to_string(),
+                get_in: #get_in_name_str.to_string(),
+                get_out: #get_out_name_str.to_string(),
+                _phantom: ::std::marker::PhantomData,
             }
         }
 
         #[cfg(target_arch = "wasm32")]
         mod #mod_name {
-            use ::nanoserde::{DeJson, DeJsonState, SerJson};
+            use ::nanoserde::{DeBin, SerBin};
             const IN_BUFFER_SIZE: usize = 1024;
             static mut IN_BUFFER: &[u8] = &[0; IN_BUFFER_SIZE];
             const OUT_BUFFER_SIZE: usize = 1024;
@@ -90,19 +76,12 @@ pub fn distilled(attr: TokenStream, item: TokenStream) -> TokenStream {
 
             #[no_mangle]
             pub fn #wrapper_name(in_buffer_len: u32) -> u32 {
-                let passed_string = unsafe { ::std::str::from_utf8(&IN_BUFFER[..in_buffer_len as usize]).unwrap() };
-                let args = {
-                    let mut state = DeJsonState::default();
-                    let mut chars = passed_string.chars();
-                    state.next(&mut chars);
-                    state.next_tok(&mut chars).expect("deser2");
-                    DeJson::de_json(&mut state, &mut chars).expect("deser")
+                let args = unsafe {
+                    DeBin::deserialize_bin(&IN_BUFFER[..in_buffer_len as usize]).unwrap()
                 };
-
-                let ret = wrapped(args).serialize_json();
-
+                let ret = wrapped(args).serialize_bin();
                 unsafe {
-                    OUT_BUFFER[..ret.len()].copy_from_slice(ret.as_bytes());
+                    OUT_BUFFER[..ret.len()].copy_from_slice(&ret);
                 }
                 ret.len() as u32
             }
