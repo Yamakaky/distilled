@@ -6,7 +6,7 @@ fn main() {}
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 #[distilled_derive::distilled]
-pub fn double(val: u32) -> u32 {
+fn double(val: u32) -> u32 {
     val * val
 }
 
@@ -24,8 +24,8 @@ fn main() -> anyhow::Result<()> {
 
     let out = vec![1, 2, 3, 5]
         .dist_iter()
-        .map(double())
-        .reduce(reduce())
+        .map(double)
+        .reduce(reduce)
         .run(&mut runner);
     dbg!(out);
 

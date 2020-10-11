@@ -36,6 +36,7 @@ pub fn distilled(attr: TokenStream, item: TokenStream) -> TokenStream {
         syn::ReturnType::Type(_, t) => *t.clone(),
     };
     let body = item.block;
+    let visibility = item.vis;
     let fn_name = item.sig.ident;
     let mod_name = syn::Ident::new(&format!("_distilled_mod_{}", fn_name), fn_name.span());
     let wrapper_name = syn::Ident::new(&format!("_distilled_wrapper_{}", fn_name), fn_name.span());
@@ -47,14 +48,13 @@ pub fn distilled(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     TokenStream::from(quote! {
         #[cfg(not(target_arch = "wasm32"))]
-        pub fn #fn_name() -> ::distilled::iter::WasmFn<(#tys), #ret_type> {
-            ::distilled::iter::WasmFn {
-                entry: #wrapper_name_str,
-                get_in: #get_in_name_str,
-                get_out: #get_out_name_str,
-                _phantom: ::std::marker::PhantomData,
-            }
-        }
+        #[allow(non_upper_case_globals)]
+        #visibility const #fn_name: ::distilled::iter::WasmFn<(#tys), #ret_type> = ::distilled::iter::WasmFn {
+            entry: #wrapper_name_str,
+            get_in: #get_in_name_str,
+            get_out: #get_out_name_str,
+            _phantom: ::std::marker::PhantomData,
+        };
 
         #[cfg(target_arch = "wasm32")]
         mod #mod_name {
