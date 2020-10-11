@@ -1,4 +1,5 @@
-#![cfg_attr(target_arch = "wasm32", no_main)]
+#[cfg(target_arch = "wasm32")]
+fn main() {}
 
 #[cfg(target_arch = "wasm32")]
 #[global_allocator]
@@ -18,7 +19,7 @@ pub fn reduce(a: u32, b: u32) -> u32 {
 fn main() -> anyhow::Result<()> {
     use distilled::iter::{DistIterator, SliceExt};
 
-    let wasm_bytes = include_bytes!("../../target/wasm32-unknown-unknown/debug/wasm.wasm");
+    let wasm_bytes = include_bytes!("../../target/wasm32-wasi/debug/wasm.wasm");
     let mut runner = distilled::Runner::new(wasm_bytes);
 
     let out = vec![1, 2, 3, 5]

@@ -3,7 +3,7 @@ pub mod iter;
 use anyhow::{Context, Result};
 use iter::WasmFn;
 use std::sync::Arc;
-use wasmer::{imports, Array, Cranelift, Instance, Module, Store, WasmPtr, JIT};
+use wasmer::{Array, Cranelift, Instance, Module, Store, WasmPtr, JIT};
 
 pub struct Job<T> {
     pub args: LaunchArgs,
@@ -49,10 +49,14 @@ impl Runner {
             std::thread::spawn(move || loop {
                 match worker_req.recv() {
                     Ok(Req::Run { id, module, args }) => {
-                        let _ = worker_res.send(Res::Result {
-                            id,
-                            res: Runner::job(module, args).unwrap(),
-                        });
+                        let res = match Runner::job(module, args) {
+                            Ok(res) => res,
+                            Err(e) => {
+                                eprintln!("{:?}", e);
+                                panic!();
+                            }
+                        };
+                        let _ = worker_res.send(Res::Result { id, res });
                     }
                     Ok(Req::Stop) | Err(crossbeam_channel::RecvError) => break,
                 }
@@ -84,9 +88,14 @@ impl Runner {
     }
 
     fn job(module: Arc<wasmer::Module>, args: LaunchArgs) -> Result<Vec<u8>> {
-        let import_object = imports! {};
+        let mut wasi = wasmer_wasi::WasiState::new("distilled-cmd")
+            .env("RUST_BACKTRACE", "1")
+            .preopen(|p| p.directory("/etc").read(true))?
+            .finalize()?;
+        let import_object = wasi.import_object(&module)?;
         let instance = Instance::new(&module, &import_object).context("module instanciation")?;
         let wasm_memory = instance.exports.get_memory("memory").expect("wasm memory");
+        wasi.set_memory(wasm_memory.clone());
 
         let get_in_buffer = instance
             .exports
