@@ -15,6 +15,7 @@ pub struct LaunchArgs {
     pub in_name: String,
     pub out_name: String,
     pub bin_arg: Vec<u8>,
+    pub instance_count: u32,
 }
 
 enum Req {
@@ -52,7 +53,7 @@ impl Runner {
                         let res = match Runner::job(module, args) {
                             Ok(res) => res,
                             Err(e) => {
-                                eprintln!("{:?}", e);
+                                eprintln!("Execution error: {:?}", e);
                                 panic!();
                             }
                         };
@@ -75,7 +76,7 @@ impl Runner {
         }
     }
 
-    pub fn run(&self, args: LaunchArgs) -> Result<Vec<u8>> {
+    fn run(&self, args: LaunchArgs) -> Result<Vec<u8>> {
         let rid = 1;
         self.req_queue.send(Req::Run {
             id: rid,
@@ -97,13 +98,16 @@ impl Runner {
         let wasm_memory = instance.exports.get_memory("memory").expect("wasm memory");
         wasi.set_memory(wasm_memory.clone());
 
+        let start = instance.exports.get_function("_start")?;
+        start.call(&[]).context("execute _start")?;
+
         let get_in_buffer = instance
             .exports
             .get_native_function::<(), WasmPtr<u8, Array>>(&args.in_name)
             .expect("get_wasm_memory_buffer_pointer");
         let func = instance
             .exports
-            .get_native_function::<u32, u32>(&args.fn_name)
+            .get_native_function::<(u32, u32), u32>(&args.fn_name)
             .expect("add function in Wasm module");
         let get_out_buffer = instance
             .exports
@@ -117,7 +121,9 @@ impl Runner {
             to.set(*from);
         }
 
-        let ret_len = func.call(param_len)? as usize;
+        let ret_len = func
+            .call(param_len, args.instance_count)
+            .context("execute operation")? as usize;
 
         let out_buffer_ptr = get_out_buffer.call().unwrap();
         let offset = out_buffer_ptr.offset() as usize;
@@ -135,13 +141,38 @@ impl Runner {
         let bin_arg = arg.serialize_bin();
         let bin_ret = self
             .run(LaunchArgs {
-                fn_name: f.entry.clone(),
-                in_name: f.get_in.clone(),
-                out_name: f.get_out.clone(),
+                fn_name: f.entry.to_string(),
+                in_name: f.get_in.to_string(),
+                out_name: f.get_out.to_string(),
                 bin_arg,
+                instance_count: 1,
             })
             .unwrap();
         B::deserialize_bin(&bin_ret).unwrap()
+    }
+
+    pub fn map<A, B>(&self, f: &WasmFn<A, B>, args: &[A]) -> Vec<B>
+    where
+        A: nanoserde::SerBin,
+        B: nanoserde::DeBin,
+    {
+        let mut bin_args = vec![];
+        for arg in args {
+            arg.ser_bin(&mut bin_args);
+        }
+        let bin_ret = self
+            .run(LaunchArgs {
+                fn_name: f.entry.to_string(),
+                in_name: f.get_in.to_string(),
+                out_name: f.get_out.to_string(),
+                bin_arg: bin_args,
+                instance_count: args.len() as u32,
+            })
+            .unwrap();
+        let mut offset = 0;
+        (0..args.len())
+            .map(|_| B::de_bin(&mut offset, &bin_ret).unwrap())
+            .collect()
     }
 }
 

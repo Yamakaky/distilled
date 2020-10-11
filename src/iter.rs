@@ -67,11 +67,8 @@ where
         Self::Item: nanoserde::SerBin,
     {
         let f = self.f;
-        self.iter
-            .collect(runner)
-            .into_iter()
-            .map(|x| runner.run_one(&f, x))
-            .collect()
+        let inner = self.iter.collect(runner);
+        runner.map(&f, &inner)
     }
 }
 
@@ -93,9 +90,9 @@ where
 
 #[derive(Clone)]
 pub struct WasmFn<A, B> {
-    pub entry: String,
-    pub get_in: String,
-    pub get_out: String,
+    pub entry: &'static str,
+    pub get_in: &'static str,
+    pub get_out: &'static str,
     pub _phantom: PhantomData<(A, B)>,
 }
 

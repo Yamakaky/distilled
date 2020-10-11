@@ -49,9 +49,9 @@ pub fn distilled(attr: TokenStream, item: TokenStream) -> TokenStream {
         #[cfg(not(target_arch = "wasm32"))]
         pub fn #fn_name() -> ::distilled::iter::WasmFn<(#tys), #ret_type> {
             ::distilled::iter::WasmFn {
-                entry: #wrapper_name_str.to_string(),
-                get_in: #get_in_name_str.to_string(),
-                get_out: #get_out_name_str.to_string(),
+                entry: #wrapper_name_str,
+                get_in: #get_in_name_str,
+                get_out: #get_out_name_str,
                 _phantom: ::std::marker::PhantomData,
             }
         }
@@ -75,15 +75,21 @@ pub fn distilled(attr: TokenStream, item: TokenStream) -> TokenStream {
             }
 
             #[no_mangle]
-            pub fn #wrapper_name(in_buffer_len: u32) -> u32 {
-                let args = unsafe {
-                    DeBin::deserialize_bin(&IN_BUFFER[..in_buffer_len as usize]).unwrap()
-                };
-                let ret = wrapped(args).serialize_bin();
-                unsafe {
-                    OUT_BUFFER[..ret.len()].copy_from_slice(&ret);
+            pub fn #wrapper_name(in_buffer_len: u32, mut instance_count: u32) -> u32 {
+                let mut i_in = 0;
+                let mut out = vec![];
+                while instance_count > 0 {
+                    let args = unsafe {
+                        DeBin::de_bin(&mut i_in, &IN_BUFFER[..in_buffer_len as usize]).unwrap()
+                    };
+                    let ret = wrapped(args);
+                    ret.ser_bin(&mut out);
+                    instance_count -= 1;
                 }
-                ret.len() as u32
+                unsafe {
+                    OUT_BUFFER[..out.len()].copy_from_slice(&out);
+                }
+                out.len() as u32
             }
 
             fn wrapped((#pats): (#tys)) #ret {
