@@ -13,7 +13,7 @@ fn red(acc: u32, val: u32) -> u32 {
     acc + val
 }
 
-distilled::pipeline!(things, u8, (truc, pote), red, u32);
+distilled::pipeline!(things = u8 | truc | pote |> red: u32);
 
 distilled::setup_runtime!();
 

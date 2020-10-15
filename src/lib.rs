@@ -95,7 +95,7 @@ impl<X: nanoserde::DeBin> Iterator for Raw<X> {
 
 #[macro_export]
 macro_rules! pipeline {
-    ($name:ident, $in_ty:ty, ($($map:ident),*), $reduce:ident, $out_ty:ty) => (
+    ($name:ident = $in_ty:ty | $($map:ident)|* |> $reduce:ident: $out_ty:ty) => (
         #[cfg(not(target_arch = "wasm32"))]
         #[allow(non_upper_case_globals)]
         const $name: ::distilled::WasmFn<Vec<$in_ty>, $out_ty> = ::distilled::WasmFn {
