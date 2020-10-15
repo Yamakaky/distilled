@@ -250,6 +250,7 @@ dependencies = [
  "crossbeam-channel",
  "nanoserde",
  "wasmer",
+ "wasmer-vm",
  "wasmer-wasi",
 ]
 

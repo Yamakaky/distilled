@@ -7,6 +7,7 @@ edition = "2018"
 [dependencies]
 wasmer = { version = "1.0.0-alpha4", default-features = false, optional = false, features = ["jit", "cranelift"] }
 wasmer-wasi = { version = "1.0.0-alpha4", default-features = false, optional = false }
+wasmer-vm = { version = "1.0.0-alpha4", default-features = false, optional = false }
 nanoserde = "0.1.19"
 anyhow = "1.0.32"
 crossbeam-channel = "0.4.4"

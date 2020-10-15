@@ -1,19 +1,40 @@
 #[cfg(target_arch = "wasm32")]
-fn main() {}
+extern "C" {
+    fn cust_exit(str_ptr: u32, str_len: u32);
+}
+
+#[cfg(target_arch = "wasm32")]
+fn main() {
+    std::panic::set_hook(Box::new(|panic_info| {
+        use std::fmt::Write;
+
+        let mut out = "WASM code panicked".to_string();
+        let payload = panic_info
+            .payload()
+            .downcast_ref::<String>()
+            .map(|x| x.clone())
+            .or_else(|| {
+                panic_info
+                    .payload()
+                    .downcast_ref::<&str>()
+                    .map(|x| x.to_string())
+            });
+        match (payload, panic_info.location()) {
+            (Some(info), Some(location)) => write!(out, ": {}, {}", info, location),
+            (Some(info), None) => write!(out, ": {}", info),
+            (None, Some(location)) => write!(out, " at {}", location),
+            (None, None) => write!(out, " (no info)"),
+        }
+        .expect("write to string");
+        unsafe {
+            cust_exit(out.as_ptr() as u32, out.len() as u32);
+        }
+    }));
+}
 
 #[cfg(target_arch = "wasm32")]
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
-
-//#[distilled_derive::distilled]
-//fn double(val: u32) -> u32 {
-//    val * val
-//}
-//
-//#[distilled_derive::distilled]
-//pub fn reduce(a: u32, b: u32) -> u32 {
-//    a + b
-//}
 
 #[cfg(target_arch = "wasm32")]
 fn truc(x: u8) -> u16 {
@@ -113,7 +134,7 @@ fn main() -> anyhow::Result<()> {
 
     //let wasm_bytes = include_bytes!("../../target/wasm32-unknown-unknown/debug/wasm.wasm");
     let wasm_bytes = include_bytes!("../../target/wasm32-wasi/debug/wasm.wasm");
-    let mut runner = distilled::Runner::new(wasm_bytes);
+    let mut runner = distilled::Runner::new(wasm_bytes)?;
 
     let out = vec![1, 2, 3, 5].map_reduce(things, &mut runner);
     dbg!(out);
