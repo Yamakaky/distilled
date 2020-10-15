@@ -19,11 +19,13 @@ pub fn reduce(a: u32, b: u32) -> u32 {
 fn main() -> anyhow::Result<()> {
     use distilled::iter::{DistIterator, SliceExt};
 
+    //let wasm_bytes = include_bytes!("../../target/wasm32-unknown-unknown/debug/wasm.wasm");
     let wasm_bytes = include_bytes!("../../target/wasm32-wasi/debug/wasm.wasm");
     let mut runner = distilled::Runner::new(wasm_bytes);
 
     let out = vec![1, 2, 3, 5]
         .dist_iter()
+        .map(double)
         .map(double)
         .reduce(reduce)
         .run(&mut runner);

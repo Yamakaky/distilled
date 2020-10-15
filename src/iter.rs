@@ -42,12 +42,15 @@ pub trait DistIterator {
         Self::Item: nanoserde::SerBin;
 }
 
-impl<Item> DistIterator for DistIter<Item> {
+impl<Item> DistIterator for DistIter<Item>
+where
+    Item: nanoserde::SerBin,
+{
     type Item = Item;
+
     fn collect(self, _runner: &mut Runner) -> Vec<Self::Item>
     where
         Self: Sized,
-        Self::Item: nanoserde::SerBin,
     {
         self.values
     }
@@ -61,14 +64,12 @@ where
 {
     type Item = B;
 
-    fn collect(self, runner: &mut Runner) -> Vec<B>
+    fn collect(self, runner: &mut Runner) -> Vec<Self::Item>
     where
         Self: Sized,
-        Self::Item: nanoserde::SerBin,
     {
-        let f = self.f;
         let inner = self.iter.collect(runner);
-        runner.map(&f, &inner)
+        runner.map(&self.f, &inner)
     }
 }
 
