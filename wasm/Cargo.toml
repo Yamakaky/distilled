@@ -6,10 +6,10 @@ edition = "2018"
 
 [dependencies]
 nanoserde = "0.1.19"
+distilled = { path = ".." }
 distilled-derive = { path = "../distilled-derive" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-distilled = { path = ".." }
 anyhow = "1.0.32"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
