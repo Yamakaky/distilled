@@ -13,7 +13,6 @@ pub struct Job<T> {
 pub struct LaunchArgs {
     pub fn_name: String,
     pub in_name: String,
-    pub out_name: String,
     pub bin_arg: Vec<u8>,
     pub instance_count: u32,
 }
@@ -103,31 +102,27 @@ impl Runner {
 
         let get_in_buffer = instance
             .exports
-            .get_native_function::<(), WasmPtr<u8, Array>>(&args.in_name)
+            .get_native_function::<u32, WasmPtr<u8, Array>>(&args.in_name)
             .expect("get_wasm_memory_buffer_pointer");
         let func = instance
             .exports
-            .get_native_function::<(u32, u32), u32>(&args.fn_name)
+            .get_native_function::<(u32, u32), u64>(&args.fn_name)
             .expect("add function in Wasm module");
-        let get_out_buffer = instance
-            .exports
-            .get_native_function::<(), WasmPtr<u8, Array>>(&args.out_name)
-            .expect("get_wasm_memory_buffer_pointer");
 
-        let in_buffer_ptr = get_in_buffer.call().unwrap();
+        let in_buffer_ptr = get_in_buffer.call(args.bin_arg.len() as u32).unwrap();
         let param_len = args.bin_arg.len() as u32;
         let memory_writer = unsafe { in_buffer_ptr.deref_mut(wasm_memory, 0, param_len).unwrap() };
         for (from, to) in args.bin_arg.iter().zip(memory_writer) {
             to.set(*from);
         }
 
-        let ret_len = func
+        let ret_slice = func
             .call(param_len, args.instance_count)
-            .context("execute operation")? as usize;
+            .context("execute operation")?;
+        let ret_ptr = (ret_slice >> 32) as usize;
+        let ret_len = ret_slice as u32 as usize;
 
-        let out_buffer_ptr = get_out_buffer.call().unwrap();
-        let offset = out_buffer_ptr.offset() as usize;
-        Ok(wasm_memory.view()[offset..offset + ret_len]
+        Ok(wasm_memory.view()[ret_ptr..ret_ptr + ret_len]
             .iter()
             .map(std::cell::Cell::get)
             .collect())
@@ -143,7 +138,6 @@ impl Runner {
             .run(LaunchArgs {
                 fn_name: f.entry.to_string(),
                 in_name: f.get_in.to_string(),
-                out_name: f.get_out.to_string(),
                 bin_arg,
                 instance_count: 1,
             })
@@ -164,7 +158,6 @@ impl Runner {
             .run(LaunchArgs {
                 fn_name: f.entry.to_string(),
                 in_name: f.get_in.to_string(),
-                out_name: f.get_out.to_string(),
                 bin_arg: bin_args,
                 instance_count: args.len() as u32,
             })
@@ -188,7 +181,6 @@ impl Runner {
             .run(LaunchArgs {
                 fn_name: f.entry.to_string(),
                 in_name: f.get_in.to_string(),
-                out_name: f.get_out.to_string(),
                 bin_arg: bin_args,
                 instance_count: args.len() as u32,
             })

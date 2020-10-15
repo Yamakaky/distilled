@@ -53,19 +53,15 @@ impl<X: nanoserde::DeBin> Iterator for Raw<X> {
 
 #[cfg(target_arch = "wasm32")]
 mod wastd {
-    const IN_BUFFER_SIZE: usize = 1024;
-    pub static mut IN_BUFFER: &[u8] = &[0; IN_BUFFER_SIZE];
-    const OUT_BUFFER_SIZE: usize = 1024;
-    pub static mut OUT_BUFFER: &mut [u8] = &mut [0; OUT_BUFFER_SIZE];
+    pub static mut IN_BUFFER: Vec<u8> = Vec::new();
+    pub static mut OUT_BUFFER: Vec<u8> = Vec::new();
 
     #[no_mangle]
-    pub fn get_in() -> *const u8 {
-        unsafe { IN_BUFFER.as_ptr() }
-    }
-
-    #[no_mangle]
-    pub fn get_out() -> *const u8 {
-        unsafe { OUT_BUFFER.as_ptr() }
+    pub unsafe fn get_in(size: u32) -> *const u8 {
+        IN_BUFFER.clear();
+        IN_BUFFER.reserve(size as usize);
+        IN_BUFFER.set_len(size as usize);
+        IN_BUFFER.as_ptr()
     }
 }
 
@@ -76,30 +72,26 @@ macro_rules! pipeline {
         const $name: ::distilled::iter::WasmFn<Vec<$in_ty>, $out_ty> = ::distilled::iter::WasmFn {
             entry: stringify!($name),
             get_in: "get_in",
-            get_out: "get_out",
             _phantom: ::std::marker::PhantomData,
         };
 
         #[cfg(target_arch = "wasm32")]
         #[no_mangle]
-        pub fn $name(in_buffer_len: u32, instance_count: u32) -> u32 {
+        pub unsafe fn $name(in_buffer_len: u32, instance_count: u32) -> u64 {
             use ::nanoserde::{ SerBin};
             fn inner(vals: impl Iterator<Item=$in_ty>) -> $out_ty {
                 vals.fold(0, |acc, val| $reduce(acc, call_chain!(val, $($map),*)))
             }
 
             let ret = inner(Raw{
-                slice: unsafe {&wastd::IN_BUFFER[..in_buffer_len as usize]},
+                slice: &wastd::IN_BUFFER[..in_buffer_len as usize],
                 idx:0,
                 instance_count,
                 _phantom:std::marker::PhantomData
             });
-            let mut out = vec![];
-            ret.ser_bin(&mut out);
-            unsafe {
-                wastd::OUT_BUFFER[..out.len()].copy_from_slice(&out);
-            }
-            out.len() as u32
+            wastd::OUT_BUFFER.clear();
+            ret.ser_bin(&mut wastd::OUT_BUFFER);
+            ((wastd::OUT_BUFFER.as_ptr() as u64) << 32 | wastd::OUT_BUFFER.len() as u64)
         }
     )
 }
