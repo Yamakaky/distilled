@@ -174,6 +174,30 @@ impl Runner {
             .map(|_| B::de_bin(&mut offset, &bin_ret).unwrap())
             .collect()
     }
+
+    pub fn map_reduce<A, B>(&self, f: &WasmFn<Vec<A>, B>, args: &[A]) -> B
+    where
+        A: nanoserde::SerBin,
+        B: nanoserde::DeBin,
+    {
+        let mut bin_args = vec![];
+        for arg in args {
+            arg.ser_bin(&mut bin_args);
+        }
+        let bin_ret = self
+            .run(LaunchArgs {
+                fn_name: f.entry.to_string(),
+                in_name: f.get_in.to_string(),
+                out_name: f.get_out.to_string(),
+                bin_arg: bin_args,
+                instance_count: args.len() as u32,
+            })
+            .unwrap();
+        let mut offset = 0;
+        let out = B::de_bin(&mut offset, &bin_ret).unwrap();
+        assert_eq!(offset, bin_ret.len());
+        out
+    }
 }
 
 impl Drop for Runner {

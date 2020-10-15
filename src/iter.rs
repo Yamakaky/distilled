@@ -99,10 +99,22 @@ pub struct WasmFn<A, B> {
 
 pub trait SliceExt<Item> {
     fn dist_iter(self) -> DistIter<Item>;
+    fn map_reduce<B>(self, f: WasmFn<Vec<Item>, B>, runner: &mut Runner) -> B
+    where
+        Item: nanoserde::SerBin,
+        B: nanoserde::DeBin;
 }
 
 impl<Item> SliceExt<Item> for Vec<Item> {
     fn dist_iter(self) -> DistIter<Item> {
         DistIter { values: self }
+    }
+
+    fn map_reduce<B>(self, f: WasmFn<Vec<Item>, B>, runner: &mut Runner) -> B
+    where
+        Item: nanoserde::SerBin,
+        B: nanoserde::DeBin,
+    {
+        runner.map_reduce(&f, &self)
     }
 }
