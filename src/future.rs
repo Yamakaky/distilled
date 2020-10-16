@@ -14,18 +14,27 @@ impl Manager {
             values: HashMap::new(),
         }
     }
+
+    pub fn wake(&mut self, id: u64, value: Result<Vec<u8>, crate::ExecutionError>) {
+        // If absent, the future was cancelled.
+        if self.wakers.contains_key(&id) {
+            let none = self.values.insert(id, value);
+            assert!(none.is_none());
+            self.wakers.remove(&id).expect("unreachable").wake_by_ref();
+        }
+    }
+
     fn set_waker(&mut self, id: u64, waker: Waker) {
         self.wakers.insert(id, waker);
     }
 
-    pub fn wake(&mut self, id: u64, value: Result<Vec<u8>, crate::ExecutionError>) {
-        let none = self.values.insert(id, value);
-        assert!(none.is_none());
-        self.wakers.remove(&id).expect("invalid id").wake_by_ref();
-    }
-
     fn value(&mut self, id: u64) -> Option<Result<Vec<u8>, crate::ExecutionError>> {
         self.values.remove(&id)
+    }
+
+    fn cancel(&mut self, id: u64) {
+        self.values.remove(&id);
+        self.wakers.remove(&id);
     }
 }
 
@@ -51,6 +60,14 @@ impl Future for RunFuture {
             manager.set_waker(self.id, cx.waker().clone());
             Poll::Pending
         }
+    }
+}
+
+impl Drop for RunFuture {
+    fn drop(&mut self) {
+        // TODO: cancel the remote computation
+        let mut manager = self.manager.lock().expect("error locking the manager");
+        manager.cancel(self.id);
     }
 }
 
