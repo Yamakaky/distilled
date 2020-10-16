@@ -1,7 +1,7 @@
 use std::{sync::Arc, sync::Mutex};
 
 use crate::WasmFn;
-use anyhow::{Context, Result};
+use anyhow::Context;
 use wasmer::{Array, ChainableNamedResolver, Cranelift, Instance, Module, Store, WasmPtr, JIT};
 
 pub struct Job<T> {
@@ -15,15 +15,13 @@ struct Callable<'a> {
 }
 
 impl<'a> Callable<'a> {
-    fn new(instance: &'a wasmer::Instance, get_in_str: &str, main_str: &str) -> Result<Self> {
-        let get_in = instance
-            .exports
-            .get_native_function(get_in_str)
-            .with_context(|| format!("importing `{}`", get_in_str))?;
-        let main = instance
-            .exports
-            .get_native_function(main_str)
-            .with_context(|| format!("importing `{}`", main_str))?;
+    fn new(
+        instance: &'a wasmer::Instance,
+        get_in_str: &str,
+        main_str: &str,
+    ) -> Result<Self, crate::ExecutionError> {
+        let get_in = instance.exports.get_native_function(get_in_str)?;
+        let main = instance.exports.get_native_function(main_str)?;
         Ok(Callable { get_in, main })
     }
 
@@ -32,7 +30,7 @@ impl<'a> Callable<'a> {
         wasm_memory: &wasmer::Memory,
         bin_arg: Vec<u8>,
         instance_count: u32,
-    ) -> Result<Vec<u8>> {
+    ) -> Result<Vec<u8>, crate::ExecutionError> {
         let param_len = bin_arg.len() as u32;
         let in_buffer_ptr = self.get_in.call(param_len)?;
         let memory_writer = unsafe {
@@ -69,7 +67,10 @@ enum Req {
 
 enum Res {
     // TODO: custom error type
-    Result { id: u64, res: Result<Vec<u8>> },
+    Result {
+        id: u64,
+        res: Result<Vec<u8>, crate::ExecutionError>,
+    },
 }
 
 pub struct Runner {
@@ -78,7 +79,7 @@ pub struct Runner {
 }
 
 impl Runner {
-    pub fn new(wasm_bin: &[u8]) -> Result<Self> {
+    pub fn new(wasm_bin: &[u8]) -> anyhow::Result<Self> {
         let engine = JIT::new(&Cranelift::default()).engine();
         let store = Store::new(&engine);
         let module = Module::new(&store, wasm_bin).context("module compilation")?;
@@ -104,9 +105,7 @@ impl Runner {
                                     },
                                 ),
                             };
-                            let res = func
-                                .call(&memory, args.bin_arg, args.instance_count)
-                                .context("execution error");
+                            let res = func.call(&memory, args.bin_arg, args.instance_count);
                             let _ = smol::block_on(worker_res.send(Res::Result { id, res }));
                         }
                         Err(smol::channel::RecvError) => break,
@@ -126,13 +125,13 @@ impl Runner {
         Ok(Self { manager, req_queue })
     }
 
-    async fn run(&self, args: LaunchArgs) -> Result<Vec<u8>> {
+    async fn run(&self, args: LaunchArgs) -> anyhow::Result<Vec<u8>> {
         let id = crate::future::next_id();
         self.req_queue.send(Req::Run { id, args }).await?;
-        crate::future::RunFuture::new(id, self.manager.clone()).await
+        Ok(crate::future::RunFuture::new(id, self.manager.clone()).await?)
     }
 
-    pub async fn run_one<A, B>(&self, f: &WasmFn<A, B>, arg: A) -> Result<B>
+    pub async fn run_one<A, B>(&self, f: &WasmFn<A, B>, arg: A) -> anyhow::Result<B>
     where
         A: nanoserde::SerBin,
         B: nanoserde::DeBin,
@@ -149,7 +148,7 @@ impl Runner {
         Ok(B::deserialize_bin(&bin_ret).unwrap())
     }
 
-    pub async fn map<A, B>(&self, f: &WasmFn<A, B>, args: &[A]) -> Result<Vec<B>>
+    pub async fn map<A, B>(&self, f: &WasmFn<A, B>, args: &[A]) -> anyhow::Result<Vec<B>>
     where
         A: nanoserde::SerBin,
         B: nanoserde::DeBin,
@@ -183,7 +182,12 @@ impl Runner {
         Ok(outs)
     }
 
-    pub async fn map_reduce<A, B>(&self, f: &WasmFn<Vec<A>, B>, init: B, args: &[A]) -> Result<B>
+    pub async fn map_reduce<A, B>(
+        &self,
+        f: &WasmFn<Vec<A>, B>,
+        init: B,
+        args: &[A],
+    ) -> anyhow::Result<B>
     where
         A: nanoserde::SerBin,
         B: nanoserde::SerBin + nanoserde::DeBin,
@@ -219,7 +223,7 @@ impl Runner {
     }
 }
 
-fn get_instance(module: &wasmer::Module) -> Result<(wasmer::Instance, wasmer::Memory)> {
+fn get_instance(module: &wasmer::Module) -> anyhow::Result<(wasmer::Instance, wasmer::Memory)> {
     use std::cell::RefCell;
     use std::rc::Rc;
 

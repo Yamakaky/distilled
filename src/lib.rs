@@ -1,4 +1,6 @@
 #[cfg(not(target_arch = "wasm32"))]
+mod error;
+#[cfg(not(target_arch = "wasm32"))]
 mod future;
 #[cfg(not(target_arch = "wasm32"))]
 mod host;
@@ -7,6 +9,7 @@ mod iter;
 
 #[cfg(not(target_arch = "wasm32"))]
 mod inner {
+    pub use super::error::*;
     pub use super::future::*;
     pub use super::host::*;
     pub use super::iter::*;

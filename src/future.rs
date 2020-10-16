@@ -1,11 +1,10 @@
-use anyhow::Result;
 use std::task::*;
 use std::{collections::HashMap, pin::Pin};
 use std::{future::Future, sync::Arc, sync::Mutex};
 
 pub struct Manager {
     wakers: HashMap<u64, Waker>,
-    values: HashMap<u64, Result<Vec<u8>>>,
+    values: HashMap<u64, Result<Vec<u8>, crate::ExecutionError>>,
 }
 
 impl Manager {
@@ -19,13 +18,13 @@ impl Manager {
         self.wakers.insert(id, waker);
     }
 
-    pub fn wake(&mut self, id: u64, value: Result<Vec<u8>>) {
+    pub fn wake(&mut self, id: u64, value: Result<Vec<u8>, crate::ExecutionError>) {
         let none = self.values.insert(id, value);
         assert!(none.is_none());
         self.wakers.remove(&id).expect("invalid id").wake_by_ref();
     }
 
-    fn value(&mut self, id: u64) -> Option<Result<Vec<u8>>> {
+    fn value(&mut self, id: u64) -> Option<Result<Vec<u8>, crate::ExecutionError>> {
         self.values.remove(&id)
     }
 }
@@ -42,7 +41,7 @@ impl RunFuture {
 }
 
 impl Future for RunFuture {
-    type Output = Result<Vec<u8>>;
+    type Output = Result<Vec<u8>, crate::ExecutionError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut manager = self.manager.lock().expect("error locking the manager");

@@ -12,6 +12,7 @@ wasmer = { version = "1.0.0-alpha4", default-features = false, optional = false,
 wasmer-wasi = { version = "1.0.0-alpha4", default-features = false, optional = false }
 wasmer-vm = { version = "1.0.0-alpha4", default-features = false, optional = false }
 anyhow = "1.0"
+thiserror = "1.0"
 smol = "1.2"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
