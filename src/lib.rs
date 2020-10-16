@@ -118,19 +118,17 @@ macro_rules! pipeline {
         #[no_mangle]
         pub unsafe fn $name(in_buffer_len: u32, instance_count: u32) -> u64 {
             use ::nanoserde::{DeBin, SerBin};
-            fn inner(init: $out_ty, vals: impl Iterator<Item=$in_ty>) -> $out_ty {
-                vals.fold(init, |acc, val| $reduce(acc, ::distilled::call_chain!(val, $($map),*)))
-            }
 
             let slice = &::distilled::IN_BUFFER[..in_buffer_len as usize];
             let mut idx = 0;
             let init = DeBin::de_bin(&mut idx, &slice).expect("error deserializing init");
-            let ret = inner(init, ::distilled::Raw{
+            let ret = ::distilled::Raw {
                 slice,
                 idx,
                 instance_count,
                 _phantom: std::marker::PhantomData,
-            });
+            }.fold(init, |acc, val| $reduce(acc, ::distilled::call_chain!(val, $($map),*)));
+
             ::distilled::OUT_BUFFER.clear();
             ret.ser_bin(&mut ::distilled::OUT_BUFFER);
             ((::distilled::OUT_BUFFER.as_ptr() as u64) << 32 | ::distilled::OUT_BUFFER.len() as u64)
