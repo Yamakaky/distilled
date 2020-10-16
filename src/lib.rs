@@ -18,6 +18,7 @@ mod guest;
 #[cfg(target_arch = "wasm32")]
 mod inner {
     pub use super::guest::*;
+    pub use wee_alloc::WeeAlloc;
 
     pub static mut IN_BUFFER: Vec<u8> = Vec::new();
     pub static mut OUT_BUFFER: Vec<u8> = Vec::new();
@@ -69,7 +70,7 @@ macro_rules! setup_runtime {
 
         #[cfg(target_arch = "wasm32")]
         #[global_allocator]
-        static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
+        static ALLOC: ::distilled::WeeAlloc = ::distilled::WeeAlloc::INIT;
     };
 }
 

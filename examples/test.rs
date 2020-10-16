@@ -32,7 +32,7 @@ distilled::setup_runtime!();
 fn main() -> anyhow::Result<()> {
     smol::block_on(async {
         //let wasm_bytes = include_bytes!("../../target/wasm32-unknown-unknown/debug/wasm.wasm");
-        let wasm_bytes = include_bytes!("../../target/wasm32-wasi/debug/wasm.wasm");
+        let wasm_bytes = include_bytes!("../target/wasm32-wasi/debug/examples/test.wasm");
         let runner = distilled::Runner::new(wasm_bytes)?;
 
         dbg!(runner.map_reduce(&map_reduce, 0, &[1, 2, 3, 5]).await?);
