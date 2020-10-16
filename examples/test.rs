@@ -22,9 +22,9 @@ fn concat(mut acc: String, val: String) -> String {
     acc
 }
 
-distilled::pipeline!(map_reduce = u8 | as_u16 | as_u32 |> sum: u32);
+distilled::pipeline!(cast_then_sum = u8 | as_u16 | as_u32 |> sum: u32);
 distilled::pipeline!(concat_str = String |> concat: String);
-distilled::pipeline_map!(map = u8 | as_u16 | double | as_u32: u32);
+distilled::pipeline!(cast_and_double = u8 | as_u16 | double | as_u32: u32);
 
 distilled::setup_runtime!();
 
@@ -35,7 +35,7 @@ fn main() -> anyhow::Result<()> {
         let wasm_bytes = include_bytes!("../target/wasm32-wasi/debug/examples/test.wasm");
         let runner = distilled::Runner::new(wasm_bytes)?;
 
-        dbg!(runner.map_reduce(&map_reduce, 0, &[1, 2, 3, 5]).await?);
+        dbg!(runner.map_reduce(&cast_then_sum, 0, &[1, 2, 3, 5]).await?);
         dbg!(
             runner
                 .map_reduce(
@@ -47,7 +47,7 @@ fn main() -> anyhow::Result<()> {
         );
         dbg!(
             runner
-                .map(&map, &vec![1, 2, 3, 5, 1, 2, 3, 5, 1, 2, 3, 5, 1, 2, 3, 5],)
+                .map(&cast_and_double, &vec![1, 2, 3, 5, 1, 2])
                 .await?
         );
 

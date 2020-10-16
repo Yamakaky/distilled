@@ -137,11 +137,7 @@ macro_rules! pipeline {
             ret.ser_bin(&mut ::distilled::OUT_BUFFER);
             ((::distilled::OUT_BUFFER.as_ptr() as u64) << 32 | ::distilled::OUT_BUFFER.len() as u64)
         }
-    )
-}
-
-#[macro_export]
-macro_rules! pipeline_map {
+    );
     ($name:ident = $in_ty:ty | $($map:ident)|* : $out_ty:ty) => (
         #[cfg(not(target_arch = "wasm32"))]
         #[allow(non_upper_case_globals)]
@@ -169,7 +165,7 @@ macro_rules! pipeline_map {
             }
             ((::distilled::OUT_BUFFER.as_ptr() as u64) << 32 | ::distilled::OUT_BUFFER.len() as u64)
         }
-    )
+    );
 }
 
 #[cfg(target_arch = "wasm32")]
