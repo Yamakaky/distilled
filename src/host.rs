@@ -1,3 +1,5 @@
+use std::{sync::Arc, sync::Mutex};
+
 use crate::WasmFn;
 use anyhow::{Context, Result};
 use wasmer::{Array, ChainableNamedResolver, Cranelift, Instance, Module, Store, WasmPtr, JIT};
@@ -79,10 +81,9 @@ enum Res {
     Result { id: u64, res: Vec<u8> },
 }
 
-#[derive(Debug, Clone)]
 pub struct Runner {
-    req_queue: crossbeam_channel::Sender<Req>,
-    res_queue: crossbeam_channel::Receiver<Res>,
+    manager: Arc<Mutex<crate::future::Manager>>,
+    req_queue: smol::channel::Sender<Req>,
 }
 
 impl Runner {
@@ -91,9 +92,9 @@ impl Runner {
         let store = Store::new(&engine);
         let module = Module::new(&store, wasm_bin).context("module compilation")?;
         let (instance, memory) = get_instance(&module).context("module instanciation")?;
-        let (req_queue, worker_req) = crossbeam_channel::unbounded();
-        let (worker_res, res_queue) = crossbeam_channel::unbounded();
-        for _ in 0..1 {
+        let (req_queue, worker_req) = smol::channel::unbounded();
+        let (worker_res, res_queue) = smol::channel::unbounded();
+        for _ in 0..4 {
             let instance = instance.clone();
             let memory = memory.clone();
             let worker_req = worker_req.clone();
@@ -101,7 +102,7 @@ impl Runner {
             std::thread::spawn(move || {
                 let mut fns = std::collections::HashMap::new();
                 loop {
-                    match worker_req.recv() {
+                    match smol::block_on(worker_req.recv()) {
                         Ok(Req::Run { id, args }) => {
                             let func = match fns.entry(args.fn_name.to_string()) {
                                 std::collections::hash_map::Entry::Occupied(e) => e.into_mut(),
@@ -118,28 +119,32 @@ impl Runner {
                                     panic!("Execution error: {:?}", e);
                                 }
                             };
-                            let _ = worker_res.send(Res::Result { id, res });
+                            smol::block_on(worker_res.send(Res::Result { id, res })).unwrap();
                         }
-                        Ok(Req::Stop) | Err(crossbeam_channel::RecvError) => break,
+                        Ok(Req::Stop) | Err(smol::channel::RecvError) => break,
                     }
                 }
             });
         }
-        Ok(Self {
-            req_queue,
-            res_queue,
+        let manager = Arc::new(Mutex::new(crate::future::Manager::new()));
+        let manager2 = manager.clone();
+        smol::spawn(async move {
+            while let Ok(Res::Result { id, res }) = res_queue.recv().await {
+                let mut manager = manager2.lock().unwrap();
+                manager.wake(id, res);
+            }
         })
+        .detach();
+        Ok(Self { manager, req_queue })
     }
 
-    fn run(&self, args: LaunchArgs) -> Result<Vec<u8>> {
-        let rid = 1;
-        self.req_queue.send(Req::Run { id: rid, args })?;
-        let Res::Result { id, res } = self.res_queue.recv()?;
-        assert_eq!(id, rid);
-        Ok(res)
+    async fn run(&self, args: LaunchArgs) -> Vec<u8> {
+        let id = crate::future::next_id();
+        self.req_queue.send(Req::Run { id, args }).await.unwrap();
+        crate::future::RunFuture::new(id, self.manager.clone()).await
     }
 
-    pub fn run_one<A, B>(&self, f: &WasmFn<A, B>, arg: A) -> B
+    pub async fn run_one<A, B>(&self, f: &WasmFn<A, B>, arg: A) -> B
     where
         A: nanoserde::SerBin,
         B: nanoserde::DeBin,
@@ -152,54 +157,74 @@ impl Runner {
                 bin_arg,
                 instance_count: 1,
             })
-            .unwrap();
+            .await;
         B::deserialize_bin(&bin_ret).unwrap()
     }
 
-    pub fn map<A, B>(&self, f: &WasmFn<A, B>, args: &[A]) -> Vec<B>
+    pub async fn map<A, B>(&self, f: &WasmFn<A, B>, args: &[A]) -> Vec<B>
     where
         A: nanoserde::SerBin,
         B: nanoserde::DeBin,
     {
-        let mut bin_args = vec![];
-        for arg in args {
-            arg.ser_bin(&mut bin_args);
-        }
-        let bin_ret = self
-            .run(LaunchArgs {
+        let chunk_size = 2;
+        let mut futures = vec![];
+        for partition in args.chunks(chunk_size) {
+            let mut bin_args = vec![];
+            for arg in partition {
+                arg.ser_bin(&mut bin_args);
+            }
+            let future = self.run(LaunchArgs {
                 fn_name: f.entry.to_string(),
                 in_name: f.get_in.to_string(),
                 bin_arg: bin_args,
-                instance_count: args.len() as u32,
-            })
-            .unwrap();
-        let mut offset = 0;
-        (0..args.len())
-            .map(|_| B::de_bin(&mut offset, &bin_ret).unwrap())
-            .collect()
+                instance_count: partition.len() as u32,
+            });
+            futures.push(future);
+        }
+        let mut outs = Vec::with_capacity(args.len());
+        for future in futures {
+            let bin_ret = future.await;
+
+            let mut offset = 0;
+            while offset < bin_ret.len() {
+                outs.push(B::de_bin(&mut offset, &bin_ret).unwrap());
+            }
+        }
+        assert_eq!(outs.len(), args.len());
+        outs
     }
 
-    pub fn map_reduce<A, B>(&self, f: &WasmFn<Vec<A>, B>, args: &[A]) -> B
+    pub async fn map_reduce<A, B>(&self, f: &WasmFn<Vec<A>, B>, args: &[A]) -> Vec<B>
     where
         A: nanoserde::SerBin,
         B: nanoserde::DeBin,
     {
-        let mut bin_args = vec![];
-        for arg in args {
-            arg.ser_bin(&mut bin_args);
-        }
-        let bin_ret = self
-            .run(LaunchArgs {
+        let chunk_size = 2;
+        let mut futures = vec![];
+        for partition in args.chunks(chunk_size) {
+            let mut bin_args = vec![];
+            for arg in partition {
+                arg.ser_bin(&mut bin_args);
+            }
+            let future = self.run(LaunchArgs {
                 fn_name: f.entry.to_string(),
                 in_name: f.get_in.to_string(),
                 bin_arg: bin_args,
-                instance_count: args.len() as u32,
-            })
-            .unwrap();
-        let mut offset = 0;
-        let out = B::de_bin(&mut offset, &bin_ret).unwrap();
-        assert_eq!(offset, bin_ret.len());
-        out
+                instance_count: partition.len() as u32,
+            });
+            futures.push(future);
+        }
+        let mut outs = vec![];
+        for future in futures {
+            let bin_ret = future.await;
+
+            let mut offset = 0;
+            let out = B::de_bin(&mut offset, &bin_ret).unwrap();
+            assert_eq!(offset, bin_ret.len());
+
+            outs.push(out);
+        }
+        outs
     }
 }
 

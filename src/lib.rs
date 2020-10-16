@@ -1,10 +1,13 @@
 #[cfg(not(target_arch = "wasm32"))]
+mod future;
+#[cfg(not(target_arch = "wasm32"))]
 mod host;
 #[cfg(not(target_arch = "wasm32"))]
 mod iter;
 
 #[cfg(not(target_arch = "wasm32"))]
 mod inner {
+    pub use super::future::*;
     pub use super::host::*;
     pub use super::iter::*;
 }
@@ -120,6 +123,37 @@ macro_rules! pipeline {
             });
             ::distilled::OUT_BUFFER.clear();
             ret.ser_bin(&mut ::distilled::OUT_BUFFER);
+            ((::distilled::OUT_BUFFER.as_ptr() as u64) << 32 | ::distilled::OUT_BUFFER.len() as u64)
+        }
+    )
+}
+
+#[macro_export]
+macro_rules! pipeline_map {
+    ($name:ident = $in_ty:ty | $($map:ident)|* : $out_ty:ty) => (
+        #[cfg(not(target_arch = "wasm32"))]
+        #[allow(non_upper_case_globals)]
+        const $name: ::distilled::WasmFn<$in_ty, $out_ty> = ::distilled::WasmFn {
+            entry: stringify!($name),
+            get_in: "get_in",
+            _phantom: ::std::marker::PhantomData,
+        };
+
+        #[cfg(target_arch = "wasm32")]
+        #[no_mangle]
+        pub unsafe fn $name(in_buffer_len: u32, instance_count: u32) -> u64 {
+            use ::nanoserde::SerBin;
+
+            let ret_iter = ::distilled::Raw{
+                slice: &::distilled::IN_BUFFER[..in_buffer_len as usize],
+                idx:0,
+                instance_count,
+                _phantom: std::marker::PhantomData,
+            }.map(|val| ::distilled::call_chain!(val, $($map),*));
+            ::distilled::OUT_BUFFER.clear();
+            for x in ret_iter {
+                x.ser_bin(&mut ::distilled::OUT_BUFFER);
+            }
             ((::distilled::OUT_BUFFER.as_ptr() as u64) << 32 | ::distilled::OUT_BUFFER.len() as u64)
         }
     )
