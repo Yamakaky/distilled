@@ -98,26 +98,33 @@ impl<X: nanoserde::DeBin> Iterator for Raw<X> {
 
 #[macro_export]
 macro_rules! pipeline {
+    ($name:ident = $in_ty:ty |> $reduce:ident: $out_ty:ty) => (
+        ::distilled::pipeline!($name = $in_ty | |> $reduce: $out_ty);
+    );
     ($name:ident = $in_ty:ty | $($map:ident)|* |> $reduce:ident: $out_ty:ty) => (
         #[cfg(not(target_arch = "wasm32"))]
         #[allow(non_upper_case_globals)]
         const $name: ::distilled::WasmFn<Vec<$in_ty>, $out_ty> = ::distilled::WasmFn {
             entry: stringify!($name),
             get_in: "get_in",
+            reduce: Some($reduce),
             _phantom: ::std::marker::PhantomData,
         };
 
         #[cfg(target_arch = "wasm32")]
         #[no_mangle]
         pub unsafe fn $name(in_buffer_len: u32, instance_count: u32) -> u64 {
-            use ::nanoserde::SerBin;
-            fn inner(vals: impl Iterator<Item=$in_ty>) -> $out_ty {
-                vals.fold(0, |acc, val| $reduce(acc, ::distilled::call_chain!(val, $($map),*)))
+            use ::nanoserde::{DeBin, SerBin};
+            fn inner(init: $out_ty, vals: impl Iterator<Item=$in_ty>) -> $out_ty {
+                vals.fold(init, |acc, val| $reduce(acc, ::distilled::call_chain!(val, $($map),*)))
             }
 
-            let ret = inner(::distilled::Raw{
-                slice: &::distilled::IN_BUFFER[..in_buffer_len as usize],
-                idx:0,
+            let slice = &::distilled::IN_BUFFER[..in_buffer_len as usize];
+            let mut idx = 0;
+            let init = DeBin::de_bin(&mut idx, &slice).unwrap();
+            let ret = inner(init, ::distilled::Raw{
+                slice,
+                idx,
                 instance_count,
                 _phantom: std::marker::PhantomData,
             });
@@ -136,6 +143,7 @@ macro_rules! pipeline_map {
         const $name: ::distilled::WasmFn<$in_ty, $out_ty> = ::distilled::WasmFn {
             entry: stringify!($name),
             get_in: "get_in",
+            reduce: None,
             _phantom: ::std::marker::PhantomData,
         };
 
@@ -167,4 +175,5 @@ macro_rules! call_chain {
         ::distilled::call_chain!(x, $($then),*)
     });
     ($param:tt, $first:ident) => ($first($param));
+    ($param:tt, ) => ($param);
 }

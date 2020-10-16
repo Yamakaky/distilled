@@ -166,6 +166,7 @@ impl Runner {
         A: nanoserde::SerBin,
         B: nanoserde::DeBin,
     {
+        assert!(f.reduce.is_none());
         let chunk_size = 2;
         let mut futures = vec![];
         for partition in args.chunks(chunk_size) {
@@ -194,15 +195,17 @@ impl Runner {
         outs
     }
 
-    pub async fn map_reduce<A, B>(&self, f: &WasmFn<Vec<A>, B>, args: &[A]) -> Vec<B>
+    pub async fn map_reduce<A, B>(&self, f: &WasmFn<Vec<A>, B>, init: B, args: &[A]) -> B
     where
         A: nanoserde::SerBin,
-        B: nanoserde::DeBin,
+        B: nanoserde::SerBin + nanoserde::DeBin,
     {
+        let reduce = f.reduce.expect("not a reducer");
         let chunk_size = 2;
         let mut futures = vec![];
         for partition in args.chunks(chunk_size) {
             let mut bin_args = vec![];
+            init.ser_bin(&mut bin_args);
             for arg in partition {
                 arg.ser_bin(&mut bin_args);
             }
@@ -214,7 +217,7 @@ impl Runner {
             });
             futures.push(future);
         }
-        let mut outs = vec![];
+        let mut acc = init;
         for future in futures {
             let bin_ret = future.await;
 
@@ -222,9 +225,9 @@ impl Runner {
             let out = B::de_bin(&mut offset, &bin_ret).unwrap();
             assert_eq!(offset, bin_ret.len());
 
-            outs.push(out);
+            acc = reduce(acc, out);
         }
-        outs
+        acc
     }
 }
 
