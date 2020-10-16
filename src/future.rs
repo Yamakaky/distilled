@@ -22,7 +22,7 @@ impl Manager {
     pub fn wake(&mut self, id: u64, value: Result<Vec<u8>>) {
         let none = self.values.insert(id, value);
         assert!(none.is_none());
-        self.wakers.remove(&id).unwrap().wake_by_ref();
+        self.wakers.remove(&id).expect("invalid id").wake_by_ref();
     }
 
     fn value(&mut self, id: u64) -> Option<Result<Vec<u8>>> {
@@ -45,7 +45,7 @@ impl Future for RunFuture {
     type Output = Result<Vec<u8>>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let mut manager = self.manager.lock().unwrap();
+        let mut manager = self.manager.lock().expect("error locking the manager");
         if let Some(res) = manager.value(self.id) {
             Poll::Ready(res)
         } else {

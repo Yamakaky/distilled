@@ -1,5 +1,6 @@
 use std::marker::PhantomData;
 
+//TODO separate reduce and map
 #[derive(Clone)]
 pub struct WasmFn<A, B> {
     pub entry: &'static str,

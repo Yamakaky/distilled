@@ -87,11 +87,14 @@ impl<X: nanoserde::DeBin> Iterator for Raw<X> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.instance_count == 0 {
-            assert_eq!(self.slice.len(), self.idx);
+            assert_eq!(self.slice.len(), self.idx, "unconsumed input bytes");
             None
         } else {
             self.instance_count -= 1;
-            Some(nanoserde::DeBin::de_bin(&mut self.idx, &self.slice).unwrap())
+            Some(
+                nanoserde::DeBin::de_bin(&mut self.idx, &self.slice)
+                    .expect("error deserializing input"),
+            )
         }
     }
 }
@@ -121,7 +124,7 @@ macro_rules! pipeline {
 
             let slice = &::distilled::IN_BUFFER[..in_buffer_len as usize];
             let mut idx = 0;
-            let init = DeBin::de_bin(&mut idx, &slice).unwrap();
+            let init = DeBin::de_bin(&mut idx, &slice).expect("error deserializing init");
             let ret = inner(init, ::distilled::Raw{
                 slice,
                 idx,

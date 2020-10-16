@@ -48,7 +48,11 @@ impl<'a> Callable<'a> {
     ) -> Result<Vec<u8>> {
         let param_len = bin_arg.len() as u32;
         let in_buffer_ptr = self.get_in.call(param_len)?;
-        let memory_writer = unsafe { in_buffer_ptr.deref_mut(&wasm_memory, 0, param_len).unwrap() };
+        let memory_writer = unsafe {
+            in_buffer_ptr
+                .deref_mut(&wasm_memory, 0, param_len)
+                .expect("invalid pointer")
+        };
         for (from, to) in bin_arg.iter().zip(memory_writer) {
             to.set(*from);
         }
@@ -74,7 +78,6 @@ pub struct LaunchArgs {
 
 enum Req {
     Run { id: u64, args: LaunchArgs },
-    Stop,
 }
 
 enum Res {
@@ -116,9 +119,9 @@ impl Runner {
                             let res = func
                                 .call(&memory, args.bin_arg, args.instance_count)
                                 .context("execution error");
-                            smol::block_on(worker_res.send(Res::Result { id, res })).unwrap();
+                            let _ = smol::block_on(worker_res.send(Res::Result { id, res }));
                         }
-                        Ok(Req::Stop) | Err(smol::channel::RecvError) => break,
+                        Err(smol::channel::RecvError) => break,
                     }
                 }
             });
@@ -127,7 +130,7 @@ impl Runner {
         let manager2 = manager.clone();
         smol::spawn(async move {
             while let Ok(Res::Result { id, res }) = res_queue.recv().await {
-                let mut manager = manager2.lock().unwrap();
+                let mut manager = manager2.lock().expect("error locking the manager");
                 manager.wake(id, res);
             }
         })
@@ -197,7 +200,7 @@ impl Runner {
         A: nanoserde::SerBin,
         B: nanoserde::SerBin + nanoserde::DeBin,
     {
-        let reduce = f.reduce.expect("not a reducer");
+        let reduce = f.reduce.expect("need a reducer");
         let chunk_size = 2;
         let mut futures = vec![];
         for partition in args.chunks(chunk_size) {
@@ -248,7 +251,7 @@ fn get_instance(module: &wasmer::Module) -> Result<(wasmer::Instance, wasmer::Me
         let memory = memory.borrow();
         let error_msg = str_ptr
             .get_utf8_string(memory.as_ref().unwrap(), str_len)
-            .unwrap()
+            .expect("invalid UTF8 error message from WASM")
             .to_string();
         RuntimeError::raise(Box::new(RuntimeError::from_trap(wasmer_vm::Trap::User(
             anyhow::Error::msg(error_msg).into(),
@@ -267,7 +270,7 @@ fn get_instance(module: &wasmer::Module) -> Result<(wasmer::Instance, wasmer::Me
     let wasm_memory = instance
         .exports
         .get_memory("memory")
-        .expect("wasm memory")
+        .context("couldn't find default memory")?
         .clone();
     wasi.set_memory(wasm_memory.clone());
     mem.replace(Some(wasm_memory.clone()));
