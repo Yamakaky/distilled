@@ -9,19 +9,6 @@ pub struct Job<T> {
     pub ret_parser: fn(Vec<u8>) -> T,
 }
 
-macro_rules! wasm_call{
-    ($instance:ident, $func_name:expr, $ty:ty) => (wasm_call!($instance, $func_name, $ty,));
-    ($instance:ident, $func_name:expr, $ty:ty, $($arg:expr),*) => ({
-        let func = $instance
-            .exports
-            .get_native_function::<$ty, _>(&$func_name)
-            .with_context(|| format!("importing `{}`", &$func_name))?;
-        let out = func.call($($arg),*)
-            .with_context(|| format!("running `{}`", &$func_name))?;
-        out
-    })
-}
-
 struct Callable<'a> {
     get_in: wasmer::NativeFunc<'a, u32, WasmPtr<u8, Array>>,
     main: wasmer::NativeFunc<'a, (u32, u32), u64>,
@@ -268,7 +255,11 @@ fn get_instance(module: &wasmer::Module) -> Result<(wasmer::Instance, wasmer::Me
     wasi.set_memory(wasm_memory.clone());
     mem.replace(Some(wasm_memory.clone()));
 
-    let () = wasm_call!(instance, "_start", ());
+    let start = instance
+        .exports
+        .get_native_function::<(), ()>("_start")
+        .context("importing `_start`")?;
+    start.call().context("running `_start`")?;
 
     Ok((instance, wasm_memory))
 }
