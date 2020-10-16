@@ -15,7 +15,7 @@ anyhow = "1.0.32"
 smol = "1.2"
 
 [workspace]
-members = ["distilled-derive", "wasm"]
+members = ["wasm"]
 
 [profile.release]
 opt-level = "z"
