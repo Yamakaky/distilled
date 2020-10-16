@@ -81,6 +81,7 @@ enum Req {
 }
 
 enum Res {
+    // TODO: custom error type
     Result { id: u64, res: Result<Vec<u8>> },
 }
 
@@ -228,14 +229,6 @@ impl Runner {
             acc = reduce(acc, out);
         }
         Ok(acc)
-    }
-}
-
-impl Drop for Runner {
-    fn drop(&mut self) {
-        for _ in 0..4 {
-            let _ = self.req_queue.send(Req::Stop);
-        }
     }
 }
 
