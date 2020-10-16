@@ -35,7 +35,7 @@ fn main() -> anyhow::Result<()> {
         let wasm_bytes = include_bytes!("../../target/wasm32-wasi/debug/wasm.wasm");
         let runner = distilled::Runner::new(wasm_bytes)?;
 
-        dbg!(runner.map_reduce(&map_reduce, 0, &[1, 2, 3, 5]).await);
+        dbg!(runner.map_reduce(&map_reduce, 0, &[1, 2, 3, 5]).await?);
         dbg!(
             runner
                 .map_reduce(
@@ -43,12 +43,12 @@ fn main() -> anyhow::Result<()> {
                     "".to_string(),
                     &["a".to_string(), "b".to_string(), "c".to_string()]
                 )
-                .await
+                .await?
         );
         dbg!(
             runner
                 .map(&map, &vec![1, 2, 3, 5, 1, 2, 3, 5, 1, 2, 3, 5, 1, 2, 3, 5],)
-                .await
+                .await?
         );
 
         Ok(())

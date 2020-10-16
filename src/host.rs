@@ -78,7 +78,7 @@ enum Req {
 }
 
 enum Res {
-    Result { id: u64, res: Vec<u8> },
+    Result { id: u64, res: Result<Vec<u8>> },
 }
 
 pub struct Runner {
@@ -113,12 +113,9 @@ impl Runner {
                                     },
                                 ),
                             };
-                            let res = match func.call(&memory, args.bin_arg, args.instance_count) {
-                                Ok(res) => res,
-                                Err(e) => {
-                                    panic!("Execution error: {:?}", e);
-                                }
-                            };
+                            let res = func
+                                .call(&memory, args.bin_arg, args.instance_count)
+                                .context("execution error");
                             smol::block_on(worker_res.send(Res::Result { id, res })).unwrap();
                         }
                         Ok(Req::Stop) | Err(smol::channel::RecvError) => break,
@@ -138,13 +135,13 @@ impl Runner {
         Ok(Self { manager, req_queue })
     }
 
-    async fn run(&self, args: LaunchArgs) -> Vec<u8> {
+    async fn run(&self, args: LaunchArgs) -> Result<Vec<u8>> {
         let id = crate::future::next_id();
-        self.req_queue.send(Req::Run { id, args }).await.unwrap();
+        self.req_queue.send(Req::Run { id, args }).await?;
         crate::future::RunFuture::new(id, self.manager.clone()).await
     }
 
-    pub async fn run_one<A, B>(&self, f: &WasmFn<A, B>, arg: A) -> B
+    pub async fn run_one<A, B>(&self, f: &WasmFn<A, B>, arg: A) -> Result<B>
     where
         A: nanoserde::SerBin,
         B: nanoserde::DeBin,
@@ -157,11 +154,11 @@ impl Runner {
                 bin_arg,
                 instance_count: 1,
             })
-            .await;
-        B::deserialize_bin(&bin_ret).unwrap()
+            .await?;
+        Ok(B::deserialize_bin(&bin_ret).unwrap())
     }
 
-    pub async fn map<A, B>(&self, f: &WasmFn<A, B>, args: &[A]) -> Vec<B>
+    pub async fn map<A, B>(&self, f: &WasmFn<A, B>, args: &[A]) -> Result<Vec<B>>
     where
         A: nanoserde::SerBin,
         B: nanoserde::DeBin,
@@ -184,7 +181,7 @@ impl Runner {
         }
         let mut outs = Vec::with_capacity(args.len());
         for future in futures {
-            let bin_ret = future.await;
+            let bin_ret = future.await?;
 
             let mut offset = 0;
             while offset < bin_ret.len() {
@@ -192,10 +189,10 @@ impl Runner {
             }
         }
         assert_eq!(outs.len(), args.len());
-        outs
+        Ok(outs)
     }
 
-    pub async fn map_reduce<A, B>(&self, f: &WasmFn<Vec<A>, B>, init: B, args: &[A]) -> B
+    pub async fn map_reduce<A, B>(&self, f: &WasmFn<Vec<A>, B>, init: B, args: &[A]) -> Result<B>
     where
         A: nanoserde::SerBin,
         B: nanoserde::SerBin + nanoserde::DeBin,
@@ -219,7 +216,7 @@ impl Runner {
         }
         let mut acc = init;
         for future in futures {
-            let bin_ret = future.await;
+            let bin_ret = future.await?;
 
             let mut offset = 0;
             let out = B::de_bin(&mut offset, &bin_ret).unwrap();
@@ -227,7 +224,7 @@ impl Runner {
 
             acc = reduce(acc, out);
         }
-        acc
+        Ok(acc)
     }
 }
 
