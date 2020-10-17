@@ -105,10 +105,10 @@ impl<X: nanoserde::DeBin> Iterator for Raw<X> {
 
 #[macro_export]
 macro_rules! pipeline {
-    ($name:ident = $in_ty:ty |> $reduce:ident: $out_ty:ty) => (
-        ::distilled::pipeline!($name = $in_ty | |> $reduce: $out_ty);
+    ($name:ident = [$in_ty:ty] |> $reduce:ident: $out_ty:ty) => (
+        ::distilled::pipeline!($name = [$in_ty] | |> $reduce: $out_ty);
     );
-    ($name:ident = $in_ty:ty | $($map:ident)|* |> $reduce:ident: $out_ty:ty) => (
+    ($name:ident = [$in_ty:ty] | $($map:ident)|* |> $reduce:ident: $out_ty:ty) => (
         #[cfg(not(target_arch = "wasm32"))]
         #[allow(non_upper_case_globals)]
         const $name: ::distilled::WasmFn<Vec<$in_ty>, $out_ty> = ::distilled::WasmFn {
@@ -138,7 +138,7 @@ macro_rules! pipeline {
             ((::distilled::OUT_BUFFER.as_ptr() as u64) << 32 | ::distilled::OUT_BUFFER.len() as u64)
         }
     );
-    ($name:ident = $in_ty:ty | $($map:ident)|* : $out_ty:ty) => (
+    ($name:ident = [$in_ty:ty] | $($map:ident)|* : [$out_ty:ty]) => (
         #[cfg(not(target_arch = "wasm32"))]
         #[allow(non_upper_case_globals)]
         const $name: ::distilled::WasmFn<$in_ty, $out_ty> = ::distilled::WasmFn {

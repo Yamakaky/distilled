@@ -22,9 +22,9 @@ fn concat(mut acc: String, val: String) -> String {
     acc
 }
 
-distilled::pipeline!(cast_then_sum = u8 | as_u16 | as_u32 |> sum: u32);
-distilled::pipeline!(concat_str = String |> concat: String);
-distilled::pipeline!(cast_and_double = u8 | as_u16 | double | as_u32: u32);
+distilled::pipeline!(cast_then_sum = [u8] | as_u16 | as_u32 |> sum: u32);
+distilled::pipeline!(concat_str = [String] |> concat: String);
+distilled::pipeline!(cast_and_double = [u8] | as_u16 | double | as_u32: [u32]);
 
 distilled::setup_runtime!();
 
