@@ -1,8 +1,9 @@
-use std::{sync::Arc, sync::Mutex};
-
 use crate::WasmFn;
 use anyhow::Context;
-use wasmer::{Array, ChainableNamedResolver, Cranelift, Instance, Module, Store, WasmPtr, JIT};
+use std::{cell::RefCell, rc::Rc, sync::Arc, sync::Mutex};
+use wasmer::{
+    Array, ChainableNamedResolver, Cranelift, Instance, Module, RuntimeError, Store, WasmPtr, JIT,
+};
 
 pub struct Job<T> {
     pub args: LaunchArgs,
@@ -28,7 +29,7 @@ impl<'a> Callable<'a> {
     fn call(
         &self,
         wasm_memory: &wasmer::Memory,
-        bin_arg: Vec<u8>,
+        bin_arg: &[u8],
         instance_count: u32,
     ) -> Result<Vec<u8>, crate::ExecutionError> {
         let param_len = bin_arg.len() as u32;
@@ -93,23 +94,18 @@ impl Runner {
             let worker_res = worker_res.clone();
             std::thread::spawn(move || {
                 let mut fns = std::collections::HashMap::new();
-                loop {
-                    match smol::block_on(worker_req.recv()) {
-                        Ok(Req::Run { id, args }) => {
-                            let func = match fns.entry(args.fn_name.to_string()) {
-                                std::collections::hash_map::Entry::Occupied(e) => e.into_mut(),
-                                std::collections::hash_map::Entry::Vacant(e) => e.insert(
-                                    match Callable::new(&instance, &args.in_name, &args.fn_name) {
-                                        Ok(r) => r,
-                                        Err(e) => panic!("Callable error: {:?}", e),
-                                    },
-                                ),
-                            };
-                            let res = func.call(&memory, args.bin_arg, args.instance_count);
-                            let _ = smol::block_on(worker_res.send(Res::Result { id, res }));
-                        }
-                        Err(smol::channel::RecvError) => break,
-                    }
+                while let Ok(Req::Run { id, args }) = smol::block_on(worker_req.recv()) {
+                    let func = match fns.entry(args.fn_name.to_string()) {
+                        std::collections::hash_map::Entry::Occupied(e) => e.into_mut(),
+                        std::collections::hash_map::Entry::Vacant(e) => e.insert(
+                            match Callable::new(&instance, &args.in_name, &args.fn_name) {
+                                Ok(r) => r,
+                                Err(e) => panic!("Callable error: {:?}", e),
+                            },
+                        ),
+                    };
+                    let res = func.call(&memory, &args.bin_arg, args.instance_count);
+                    let _ = smol::block_on(worker_res.send(Res::Result { id, res }));
                 }
             });
         }
@@ -223,31 +219,27 @@ impl Runner {
     }
 }
 
+fn wasm_exit(memory: &mut Rc<RefCell<Option<wasmer::Memory>>>, str_ptr: u32, str_len: u32) {
+    let str_ptr: WasmPtr<u8, Array> = WasmPtr::new(str_ptr);
+    let memory = memory.borrow();
+    let error_msg = str_ptr
+        .get_utf8_string(memory.as_ref().unwrap(), str_len)
+        .expect("invalid UTF8 error message from WASM")
+        .to_string();
+    RuntimeError::raise(Box::new(RuntimeError::from_trap(wasmer_vm::Trap::User(
+        anyhow::Error::msg(error_msg).into(),
+    ))));
+}
+
 fn get_instance(module: &wasmer::Module) -> anyhow::Result<(wasmer::Instance, wasmer::Memory)> {
-    use std::cell::RefCell;
-    use std::rc::Rc;
-
     let mem = Rc::new(RefCell::new(None));
-    fn exit(memory: &mut Rc<RefCell<Option<wasmer::Memory>>>, str_ptr: u32, str_len: u32) {
-        use wasmer::*;
-
-        let str_ptr: WasmPtr<u8, Array> = WasmPtr::new(str_ptr);
-        let memory = memory.borrow();
-        let error_msg = str_ptr
-            .get_utf8_string(memory.as_ref().unwrap(), str_len)
-            .expect("invalid UTF8 error message from WASM")
-            .to_string();
-        RuntimeError::raise(Box::new(RuntimeError::from_trap(wasmer_vm::Trap::User(
-            anyhow::Error::msg(error_msg).into(),
-        ))));
-    }
     let mut wasi = wasmer_wasi::WasiState::new("distilled-cmd")
         .env("RUST_BACKTRACE", "1")
         .preopen(|p| p.directory("/etc").read(true))?
         .finalize()?;
     let import_object = wasi.import_object(&module)?.chain_front(wasmer::imports! {
         "env" => {
-            "cust_exit" => wasmer::Function::new_native_with_env(module.store(), mem.clone(), exit)
+            "cust_exit" => wasmer::Function::new_native_with_env(module.store(), mem.clone(), wasm_exit)
         }
     });
     let instance = Instance::new(&module, &import_object).context("module instanciation")?;

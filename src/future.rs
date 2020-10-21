@@ -2,6 +2,7 @@ use std::task::*;
 use std::{collections::HashMap, pin::Pin};
 use std::{future::Future, sync::Arc, sync::Mutex};
 
+#[derive(Debug, Default)]
 pub struct Manager {
     wakers: HashMap<u64, Waker>,
     values: HashMap<u64, Result<Vec<u8>, crate::ExecutionError>>,
@@ -9,10 +10,7 @@ pub struct Manager {
 
 impl Manager {
     pub fn new() -> Manager {
-        Manager {
-            wakers: HashMap::new(),
-            values: HashMap::new(),
-        }
+        Manager::default()
     }
 
     pub fn wake(&mut self, id: u64, value: Result<Vec<u8>, crate::ExecutionError>) {

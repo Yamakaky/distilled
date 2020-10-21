@@ -1,3 +1,5 @@
+#![deny(clippy::all)]
+
 #[cfg(target_arch = "wasm32")]
 fn as_u16(x: u8) -> u16 {
     x as u16
@@ -45,11 +47,7 @@ fn main() -> anyhow::Result<()> {
                 )
                 .await?
         );
-        dbg!(
-            runner
-                .map(&cast_and_double, &vec![1, 2, 3, 5, 1, 2])
-                .await?
-        );
+        dbg!(runner.map(&cast_and_double, &[1, 2, 3, 5, 1, 2]).await?);
 
         Ok(())
     })

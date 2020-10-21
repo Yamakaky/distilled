@@ -1,3 +1,5 @@
+#![warn(clippy::all)]
+
 #[cfg(not(target_arch = "wasm32"))]
 mod error;
 #[cfg(not(target_arch = "wasm32"))]
